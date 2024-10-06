@@ -63,7 +63,7 @@ def apply_varlingam(df_dict, lags=1, top_n=10, bootstrap=False, n_sampling=5):
         print(f"Visualizing the causal graph for {feature}")
         st.subheader(f"Causal Analysis: {feature}")
         visualize_causal_graph(adjacency_matrices, org_labels, feature,lags, top_n=top_n)
-        visualize_adjacency_matrix(adjacency_matrices, org_labels, feature,lags)
+        visualize_interactive_adjacency_matrix(adjacency_matrices, org_labels, feature,lags)
     return varlingam_results
 
 def visualize_causal_graph(adjacency_matrices, labels, fin_param, lags, top_n=10):
@@ -175,11 +175,13 @@ def visualize_causal_graph(adjacency_matrices, labels, fin_param, lags, top_n=10
 
     # Display in Streamlit
     st.plotly_chart(fig, use_container_width=True)
+import plotly.graph_objs as go
+import numpy as np
 
-def visualize_adjacency_matrix(adjacency_matrices, labels, fin_param, lags):
+def visualize_interactive_adjacency_matrix(adjacency_matrices, labels, fin_param, lags):
     """
-    Visualize the adjacency matrix as a heatmap to show causal relationships.
-    
+    Visualize the adjacency matrix as an interactive heatmap to show causal relationships.
+
     Parameters:
         adjacency_matrices (list): A list of adjacency matrices from the VARLiNGAM model.
         labels (list): A list of stock ticker labels.
@@ -189,42 +191,50 @@ def visualize_adjacency_matrix(adjacency_matrices, labels, fin_param, lags):
     # Aggregate adjacency matrices if there are multiple (e.g., from bootstrapping)
     aggregated_matrix = np.mean(adjacency_matrices, axis=0)
 
-    # Create a heatmap using seaborn
-    plt.figure(figsize=(12, 10))
-    
-    # Create a mask to only show the upper triangle since the graph is directed and some entries may be symmetric
-    mask = np.triu(np.ones_like(aggregated_matrix, dtype=bool))
+    # Create hover text for each cell
+    hover_text = [[f"{labels[i]} -> {labels[j]}<br>Causal Coefficient: {aggregated_matrix[i][j]:.2f}"
+                   for j in range(len(labels))] for i in range(len(labels))]
 
-    # Generate a custom diverging colormap (e.g., red for negative, blue for positive)
-    cmap = sns.diverging_palette(240, 10, as_cmap=True)
-
-    # Draw the heatmap with the mask and correct aspect ratio
-    sns.heatmap(
-        aggregated_matrix, 
-        mask=mask, 
-        cmap=cmap, 
-        annot=True,  # Annotate with the values
-        fmt=".2f",  # Limit to two decimal places
-        linewidths=0.5,  # Add lines between cells
-        square=True,  # Keep the cells square
-        cbar_kws={"shrink": .75, "label": "Causal Coefficients"},  # Colorbar options
-        xticklabels=labels, 
-        yticklabels=labels
+    # Create a Plotly heatmap
+    heatmap = go.Heatmap(
+        z=aggregated_matrix,  # The values (causal coefficients)
+        x=labels,  # x-axis labels (stock tickers)
+        y=labels,  # y-axis labels (stock tickers)
+        colorscale='RdBu',  # Diverging color scale (red-blue)
+        zmin=-np.max(np.abs(aggregated_matrix)),  # Ensure that both sides of the color scale are symmetric
+        zmax=np.max(np.abs(aggregated_matrix)),
+        hoverinfo="text",  # Display hover text
+        text=hover_text,  # Hover text showing stock pairs and values
+        colorbar=dict(
+            title="Causal Coefficient",
+            thickness=15,
+            titleside='right'
+        )
     )
 
-    # Title and axis labels
-    plt.title(f"Causal Relationships Adjacency Matrix for {fin_param} with Lag of {lags} quarter(s)", fontsize=16)
-    plt.xticks(rotation=45, ha="right", fontsize=12)
-    plt.yticks(fontsize=12)
-    plt.tight_layout()
+    # Determine the size based on the number of labels for a square layout
+    size_per_label = 55  # Size per label in pixels
+    matrix_size = len(labels) * size_per_label
 
-    # Show the plot in Streamlit
-    st.pyplot(plt)
+    layout = go.Layout(
+        title=f"Causal Relationships Adjacency Matrix for {fin_param} with Lag of {lags} quarter(s)",
+        xaxis=dict(ticks='',showgrid=False, side="bottom"),
+        yaxis=dict(ticks='',showgrid=False, autorange="reversed"),
+        # width=matrix_size,  # Ensure the width matches the height for a square
+        # height=matrix_size,  # Ensure the height matches the width for a square
+        hovermode='closest',
+        autosize=False  # Ensure the plot maintains the specified width and height
+    )
 
+    # Create the figure and display it
+    fig = go.Figure(data=[heatmap], layout=layout)
+    
+    # Display in Streamlit
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def causal_discovery_page():
-    st.title("Equity Causal Discovery")
+    st.header("Equity Causal Discovery Exploration")
 
     # Load and cache the dataset
     df = load_data()

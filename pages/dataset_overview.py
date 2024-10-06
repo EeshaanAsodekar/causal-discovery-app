@@ -13,20 +13,20 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 #     return pd.read_csv("data/raw_dataset.csv")
 
 def dataset_overview():
-    st.title("Dataset Overview")
+    st.header("Equity Quarterly Dataset Overview")
 
     # Load the dataset
     df = load_data()
     
     # 1. High-Level Dataset Summary
-    st.header("Dataset Summary")
+    st.subheader("Dataset Summary")
     st.write(f"**Total Number of Rows:** {df.shape[0]:,}")
     st.write(f"**Number of Financial Parameters:** {df.shape[1]:,}")
     st.write(f"**Number of Unique Tickers:** {df['ticker'].nunique():,}")
     st.write(f"**Data Date Range:** {df['calendardate'].min()} to {df['calendardate'].max()}")
     
     # 2. Feature Groups - Grouping the features for better understanding
-    st.header("Feature Groups")
+    st.subheader("Feature Groups")
     
     # Grouping similar features together for a structured overview
     feature_groups = {
@@ -73,7 +73,7 @@ def dataset_overview():
                     st.write(f"• {feature}")
 
     # 5. Interactive Filtering Section (Optional)
-    st.header("Explore Specific Ticker Data")
+    st.subheader("Explore Specific Ticker Data")
 
     # Use session state to preserve the selected ticker without full page reload
     if "selected_ticker" not in st.session_state:

@@ -5,16 +5,11 @@ from data.data_load import get_filtered_data  # Assuming this function is alread
 import lingam
 import matplotlib.pyplot as plt
 import networkx as nx
-
+import plotly.graph_objs as go
 from data.data_load import load_data
-
-# # Cache the data to avoid reloading it multiple times
-# @st.cache_data
-# def load_data():
-#     '''Load and cache the raw dataset for performance improvement.'''
-#     df = pd.read_csv('data/raw_dataset.csv')
-#     df['calendardate'] = pd.to_datetime(df['calendardate'], errors='coerce')  # Ensure date is in datetime format
-#     return df.dropna(subset=['calendardate'])  # Drop rows where 'calendardate' is NaT
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
 
 def apply_varlingam(df_dict, lags=1, top_n=10, bootstrap=False, n_sampling=5):
     """
@@ -66,13 +61,14 @@ def apply_varlingam(df_dict, lags=1, top_n=10, bootstrap=False, n_sampling=5):
 
         # Visualize the causal graph for the current financial parameter
         print(f"Visualizing the causal graph for {feature}")
+        st.subheader(f"Causal Analysis: {feature}")
         visualize_causal_graph(adjacency_matrices, org_labels, feature,lags, top_n=top_n)
-        
+        visualize_adjacency_matrix(adjacency_matrices, org_labels, feature,lags)
     return varlingam_results
 
 def visualize_causal_graph(adjacency_matrices, labels, fin_param, lags, top_n=10):
     """
-    Visualize the causal relationships using a directed graph.
+    Visualize the causal relationships using an interactive graph.
 
     Parameters:
         adjacency_matrices (list): A list of adjacency matrices from the VARLiNGAM model.
@@ -89,9 +85,9 @@ def visualize_causal_graph(adjacency_matrices, labels, fin_param, lags, top_n=10
                 weight = sum(adj[i, j] for adj in adjacency_matrices)
                 G.add_edge(labels[i], labels[j], weight=weight)
 
-    # Calculate total connection strength for each node
-    node_strength = {node: sum(G.edges[node, n]['weight'] for n in G[node]) + 
-                            sum(G.edges[n, node]['weight'] for n in G.pred[node])
+    # Calculate total connection strength for each node (sum of weights of edges in and out of the node)
+    node_strength = {node: sum(abs(G.edges[node, n]['weight']) for n in G[node]) + 
+                            sum(abs(G.edges[n, node]['weight']) for n in G.pred[node])
                      for node in G.nodes()}
     
     # Sort nodes by strength and select top_n nodes
@@ -101,42 +97,145 @@ def visualize_causal_graph(adjacency_matrices, labels, fin_param, lags, top_n=10
     # Create a subgraph for the top_n nodes
     G_top = G.subgraph(top_labels)
     
-    pos = nx.spring_layout(G_top, seed=42)  # For consistent layout
-    fig, ax = plt.subplots(figsize=(12, 12))
+    # Spring layout for better visualization
+    pos = nx.spring_layout(G_top, seed=42)
+
+    # Extract node positions
+    node_x = [pos[node][0] for node in G_top.nodes()]
+    node_y = [pos[node][1] for node in G_top.nodes()]
+
+    # Define node trace (increase size and font for better visibility)
+    node_trace = go.Scatter(
+        x=node_x, 
+        y=node_y, 
+        mode='markers+text',
+        text=[f'{node}' for node in G_top.nodes()],
+        marker=dict(
+            showscale=True,
+            colorscale='Viridis',
+            size=[30 for _ in G_top.nodes()],  # Increase node size
+            color=[node_strength[node] for node in G_top.nodes()],
+            colorbar=dict(
+                thickness=15,
+                title='Node Influence',
+                xanchor='left',
+                titleside='right'
+            ),
+            line=dict(width=3)  # Slightly thicker node borders
+        ),
+        textfont=dict(
+            size=20,  # Increase text size for better readability
+            color='green'
+        ),
+        textposition="bottom center",
+        hoverinfo='text'
+    )
+
+    # Extract edge traces (adjusting the width to reflect strength of relationships)
+    edge_traces = []
+    for edge in G_top.edges(data=True):
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        weight = abs(edge[2]['weight'])  # Ensure the edge width is positive
+        
+        # Define a minimum width for better visibility
+        width = max(weight * 3.5, 1)  # Increased scaling factor for clearer differentiation
+
+        edge_traces.append(
+            go.Scatter(
+                x=[x0, x1, None], 
+                y=[y0, y1, None],
+                line=dict(width=width, color='black'),  # Thicker line for higher weights
+                mode='lines',
+                hoverinfo='none'
+            )
+        )
+
+    # Combine traces
+    fig = go.Figure(data=edge_traces + [node_trace])
+
+    # Add layout details
+    fig.update_layout(
+        showlegend=False,
+        hovermode='closest',
+        title=f"Top {top_n} Causally Related Stocks on {fin_param} with lag of {lags} quarter(s)",
+        titlefont_size=20,  # Slightly larger title
+        margin=dict(b=0, l=0, r=0, t=60),  # More space for title
+        annotations=[dict(
+            text=f"",
+            showarrow=False,
+            xref="paper", 
+            yref="paper",
+            x=0.005, 
+            y=-0.002
+        )],
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+    )
+
+    # Display in Streamlit
+    st.plotly_chart(fig, use_container_width=True)
+
+def visualize_adjacency_matrix(adjacency_matrices, labels, fin_param, lags):
+    """
+    Visualize the adjacency matrix as a heatmap to show causal relationships.
     
-    # Adjust node size and edge width
-    nx.draw_networkx_nodes(G_top, pos, node_size=1500, node_color='skyblue', alpha=0.8, ax=ax)
+    Parameters:
+        adjacency_matrices (list): A list of adjacency matrices from the VARLiNGAM model.
+        labels (list): A list of stock ticker labels.
+        fin_param (str): The financial parameter being analyzed.
+        lags (int): The number of lags in the model.
+    """
+    # Aggregate adjacency matrices if there are multiple (e.g., from bootstrapping)
+    aggregated_matrix = np.mean(adjacency_matrices, axis=0)
+
+    # Create a heatmap using seaborn
+    plt.figure(figsize=(12, 10))
     
-    # Draw edges with bold arrows
-    edges = G_top.edges(data=True)
-    nx.draw_networkx_edges(G_top, pos, edgelist=edges, width=2, edge_color='black', alpha=0.7, arrows=True, arrowstyle='-|>', arrowsize=20, ax=ax)
-    
-    # Draw edge labels with the weight
-    edge_labels = {(u, v): f"{data['weight']:.2f}" for u, v, data in edges}
-    nx.draw_networkx_edge_labels(G_top, pos, edge_labels=edge_labels, font_size=15, font_color='red', ax=ax)
-    
-    # Draw node labels
-    nx.draw_networkx_labels(G_top, pos, font_size=12, font_weight='bold', ax=ax)
-    
-    ax.set_title(f"Top {top_n} Causally Related Stocks on {fin_param} with lag of {lags} quarter(s)", fontsize=16)
-    ax.axis('off')
-    
-    # Display the graph in Streamlit
-    st.pyplot(fig)
+    # Create a mask to only show the upper triangle since the graph is directed and some entries may be symmetric
+    mask = np.triu(np.ones_like(aggregated_matrix, dtype=bool))
+
+    # Generate a custom diverging colormap (e.g., red for negative, blue for positive)
+    cmap = sns.diverging_palette(240, 10, as_cmap=True)
+
+    # Draw the heatmap with the mask and correct aspect ratio
+    sns.heatmap(
+        aggregated_matrix, 
+        mask=mask, 
+        cmap=cmap, 
+        annot=True,  # Annotate with the values
+        fmt=".2f",  # Limit to two decimal places
+        linewidths=0.5,  # Add lines between cells
+        square=True,  # Keep the cells square
+        cbar_kws={"shrink": .75, "label": "Causal Coefficients"},  # Colorbar options
+        xticklabels=labels, 
+        yticklabels=labels
+    )
+
+    # Title and axis labels
+    plt.title(f"Causal Relationships Adjacency Matrix for {fin_param} with Lag of {lags} quarter(s)", fontsize=16)
+    plt.xticks(rotation=45, ha="right", fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.tight_layout()
+
+    # Show the plot in Streamlit
+    st.pyplot(plt)
+
+
 
 def causal_discovery_page():
-    st.title("Perform Causal Analysis with varLiNGAM")
+    st.title("Equity Causal Discovery")
 
     # Load and cache the dataset
     df = load_data()
 
-    # Part 1: Firm Selection (All Stocks Automatically Selected)
-    st.header("All Firms Selected")
+    # # Part 1: Firm Selection (All Stocks Automatically Selected)
+    # st.header("All Firms Selected")
 
-    # Use all stocks (No filtering)
-    st.write("Using all stocks for the analysis.")
-    st.write(df.head())  # Display some rows from the full dataset
-    st.write(df['ticker'].nunique())
+    # # Use all stocks (No filtering)
+    # st.write("Using all stocks for the analysis.")
+    # st.write(df.head())  # Display some rows from the full dataset
+    # st.write(df['ticker'].nunique())
 
 
     # # Display DataFrame with all stocks
@@ -144,7 +243,7 @@ def causal_discovery_page():
     # st.write(df.head())
 
     # Part 2: Apply Market Cap Filter on the Last Row for Each Stock
-    st.header("Market Cap Filter")
+    st.subheader("Market Cap Filter")
 
     # Get the latest market cap (as of the last available row) for each stock
     df_last_row = df.groupby('ticker').last().reset_index()
@@ -155,13 +254,13 @@ def causal_discovery_page():
     # Filter original DataFrame based on selected stocks that meet the market cap requirement
     df_firm_filtered = df[df['ticker'].isin(df_filtered_mcap['ticker'])]
 
-    # Display DataFrame after applying market cap filter
-    st.write("Data after applying market cap filter:")
-    st.write(df_firm_filtered.head())
-    st.write(df_firm_filtered['ticker'].nunique())
+    # # Display DataFrame after applying market cap filter
+    # st.write("Data after applying market cap filter:")
+    # st.write(df_firm_filtered.head())
+    # st.write(df_firm_filtered['ticker'].nunique())
 
     # Part 3: Variable Selection
-    st.header("Variable Selection")
+    st.subheader("Variable Selection")
 
     # Search and Filter for Variables (Features)
     financial_parameters = df.columns.tolist()
@@ -175,14 +274,14 @@ def causal_discovery_page():
         df_dict[feature] = get_filtered_data(df_firm_filtered, feature)  # Use get_filtered_data for each selected feature
     
     # Display each DataFrame for the selected features
-    st.header("Data for Selected Variables")
-    for feature, df_variable in df_dict.items():
-        st.subheader(f"Data for {feature}")
-        st.write(df_variable.head())
-        st.write(df_variable.shape)
+    # st.subheader("Data for Selected Variables")
+    # for feature, df_variable in df_dict.items():
+    #     st.subheader(f"Data for {feature}")
+    #     st.write(df_variable.head())
+    #     st.write(df_variable.shape)
 
     # Part 4: Timeframe and Frequency Selection
-    st.header("Timeframe Selection and Frequency Adjustment")
+    st.subheader("Timeframe Selection and Frequency Adjustment")
 
     # Ensure date range is set using datetime values, replacing NaT with a default min/max date
     min_date = df_firm_filtered['calendardate'].min().date() if not df_firm_filtered.empty else pd.to_datetime('2000-01-01').date()
@@ -216,11 +315,12 @@ def causal_discovery_page():
         df_dict[feature] = df_variable
 
     # Display the filtered and resampled DataFrames
-    st.header("Filtered and Resampled DataFrames")
+    st.subheader("Filtered and Resampled Data")
     for feature, df_variable in df_dict.items():
-        st.subheader(f"Data for {feature} after timeframe and frequency adjustment")
-        st.write(df_variable.head())
-        st.write(df_variable.shape)
+        st.write(f"**{feature} Dataset**")
+        # st.write(df_variable.head(3))
+        st.write(df_variable.tail(5))
+        st.write("Dataset Shape: ", df_variable.shape)
 
     # st.write(df_dict)
 

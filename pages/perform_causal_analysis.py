@@ -66,11 +66,11 @@ def apply_varlingam(df_dict, lags=1, top_n=10, bootstrap=False, n_sampling=5):
 
         # Visualize the causal graph for the current financial parameter
         print(f"Visualizing the causal graph for {feature}")
-        visualize_causal_graph(adjacency_matrices, org_labels, feature,top_n=top_n)
+        visualize_causal_graph(adjacency_matrices, org_labels, feature,lags, top_n=top_n)
         
     return varlingam_results
 
-def visualize_causal_graph(adjacency_matrices, labels, fin_param, top_n=10):
+def visualize_causal_graph(adjacency_matrices, labels, fin_param, lags, top_n=10):
     """
     Visualize the causal relationships using a directed graph.
 
@@ -118,7 +118,7 @@ def visualize_causal_graph(adjacency_matrices, labels, fin_param, top_n=10):
     # Draw node labels
     nx.draw_networkx_labels(G_top, pos, font_size=12, font_weight='bold', ax=ax)
     
-    ax.set_title(f"Top {top_n} Causally Related Stocks on {fin_param}", fontsize=16)
+    ax.set_title(f"Top {top_n} Causally Related Stocks on {fin_param} with lag of {lags} quarter(s)", fontsize=16)
     ax.axis('off')
     
     # Display the graph in Streamlit
@@ -224,8 +224,17 @@ def causal_discovery_page():
 
     # st.write(df_dict)
 
+    # Part 5: Lag Selection for VARLiNGAM
+    st.subheader("VARLiNGAM Model Parameter Selection")
+
+    # Add a slider to allow the user to select the number of lags for VARLiNGAM
+    selected_lags = st.slider("Select the number of lags for VARLiNGAM:", min_value=1, max_value=10, value=2)
+
+    # Add a slider to allow the user to select the topn for VARLiNGAM
+    selected_topn = st.slider("Select the top N causally related names to display:", min_value=5, max_value=15, value=10)
+
     # calling the varlingam model:
-    varlingam_results = apply_varlingam(df_dict, lags=2, top_n=10)
+    varlingam_results = apply_varlingam(df_dict, lags=selected_lags, top_n=selected_topn)
 
     return varlingam_results
 

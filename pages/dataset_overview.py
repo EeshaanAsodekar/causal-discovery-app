@@ -3,19 +3,20 @@ import streamlit as st
 import pandas as pd
 import sys
 import os
+from data.data_load import load_data
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Caching the dataset loading to prevent reloading every time a change occurs
-@st.cache_data  # Use st.cache if using an older version of Streamlit
-def load_dataset():
-    return pd.read_csv("data/raw_dataset.csv")
+# # Caching the dataset loading to prevent reloading every time a change occurs
+# @st.cache_data  # Use st.cache if using an older version of Streamlit
+# def load_dataset():
+#     return pd.read_csv("data/raw_dataset.csv")
 
 def dataset_overview():
     st.title("Dataset Overview")
 
     # Load the dataset
-    df = load_dataset()
+    df = load_data()
     
     # 1. High-Level Dataset Summary
     st.header("Dataset Summary")

@@ -1,5 +1,6 @@
 # data/data_load.py
 import pandas as pd
+import streamlit as st
 
 def load_raw_data() -> pd.DataFrame:
     '''Download and locally store the accounting dataset in CSV format.'''
@@ -119,6 +120,14 @@ def get_filtered_data(df: pd.DataFrame, variable: str) -> pd.DataFrame:
         pd.DataFrame: The processed and filtered dataset.
     '''
     return variable_improvement(df, variable)
+
+# Cache the data to avoid reloading it multiple times
+@st.cache_data
+def load_data():
+    '''Load and cache the raw dataset for performance improvement.'''
+    df = pd.read_csv('data/raw_dataset.csv')
+    df['calendardate'] = pd.to_datetime(df['calendardate'], errors='coerce')  # Ensure date is in datetime format
+    return df.dropna(subset=['calendardate'])  # Drop rows where 'calendardate' is NaT
 
 if __name__ == "__main__":
     # Load the raw dataset

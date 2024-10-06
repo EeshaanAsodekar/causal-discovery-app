@@ -1,7 +1,7 @@
 # pages/causal_discovery.py
 import streamlit as st
 import pandas as pd
-from data.data_load import get_filtered_data  # Assuming this function is already defined
+from data.data_load import get_filtered_data
 import lingam
 import matplotlib.pyplot as plt
 import networkx as nx

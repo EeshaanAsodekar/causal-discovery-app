@@ -121,6 +121,91 @@ def get_filtered_data(df: pd.DataFrame, variable: str) -> pd.DataFrame:
     '''
     return variable_improvement(df, variable)
 
+def load_fi_cmdty_data()-> pd.DataFrame:
+    """
+    Process raw dataset to make it suitable for analysis by converting the timestamp to a proper datetime format,
+    dropping irrelevant columns, and renaming certain columns for better clarity.
+
+    Parameters:
+    df (pd.DataFrame): The raw dataset to be processed.
+
+    Returns:
+    pd.DataFrame: The processed dataset with relevant columns and proper naming conventions.
+    """
+    df = pd.read_csv("data/metals_cmdty.csv")
+
+    # Convert 'ts_event' column to datetime format and keep only the date (remove time)
+    df['ts_event'] = pd.to_datetime(df['ts_event'], errors='coerce').dt.date
+
+    # Drop columns that are not needed for the analysis
+    df = df.drop(columns=['rtype', 'publisher_id', 'open', 'high', 'low', 'volume'])
+
+    # Rename columns to more intuitive names for better understanding
+    df = df.rename(columns={
+        'ts_event': 'date',       # 'ts_event' becomes 'event_timestamp' for clarity
+        'instrument_id': 'instrument',       # 'instrument_id' becomes 'instrument'
+        'close': 'closing_price',            # 'close' becomes 'closing_price'
+        'symbol': 'ticker_symbol'            # 'symbol' becomes 'ticker_symbol'
+    })
+
+    df.to_csv("data/cleaned_cmdty_dataset.csv")
+
+    return df
+
+import pandas as pd
+
+def get_fi_cmdty_data(df: pd.DataFrame, variables: list) -> pd.DataFrame:
+    """
+    Filter the processed dataset and return a DataFrame where each column represents 
+    the closing prices of the selected ticker symbols, with the date as the index.
+
+    Parameters:
+    df (pd.DataFrame): The processed dataset from the load_fi_cmdty_data function.
+    variables (list of str): List of ticker symbols to filter.
+
+    Returns:
+    pd.DataFrame: A pivoted DataFrame with dates as the rows and the closing prices of selected
+    ticker symbols as the columns.
+    """
+    
+    # Filter the DataFrame for the selected ticker symbols
+    filtered_df = df[df['ticker_symbol'].isin(variables)]
+    
+    # Pivot the DataFrame to have dates as rows and ticker symbols as columns, with closing prices as values
+    pivot_df = filtered_df.pivot_table(index='date', columns='ticker_symbol', values='closing_price')
+    
+    # Reset the index to make the 'event_date' a column instead of the index
+    pivot_df = pivot_df.reset_index()
+
+    # Return the pivoted DataFrame
+    return pivot_df
+
+import pandas as pd
+
+def calculate_percentage_change(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate the percentage change (returns) for the closing prices of the selected ticker symbols.
+
+    Parameters:
+    df (pd.DataFrame): A DataFrame with dates as rows and closing prices of ticker symbols as columns.
+    
+    Returns:
+    pd.DataFrame: A DataFrame with the percentage change (returns) of the closing prices, with dates as rows
+    and ticker symbols as columns.
+    """
+    
+    # Set the 'event_date' column as the index to perform percentage change calculations on ticker symbol columns
+    df.set_index('date', inplace=True)
+
+    # Calculate the percentage change for each ticker symbol (column)
+    pct_change_df = df.pct_change()
+
+    pct_change_df.dropna(inplace=True)
+
+    pct_change_df = pct_change_df.reset_index()
+
+    return pct_change_df
+
 # Cache the data to avoid reloading it multiple times
 @st.cache_data
 def load_data():
@@ -130,17 +215,21 @@ def load_data():
     return df.dropna(subset=['calendardate'])  # Drop rows where 'calendardate' is NaT
 
 if __name__ == "__main__":
-    # Load the raw dataset
-    load_raw_data()
+    # # Load the raw dataset
+    # load_raw_data()
 
-    # Read the locally saved CSV file into a DataFrame
-    df = pd.read_csv('data/raw_dataset.csv')
+    # # Read the locally saved CSV file into a DataFrame
+    # df = pd.read_csv('data/raw_dataset.csv')
     
-    # Display information about the raw dataset
+    # # Display information about the raw dataset
+    # df_info(df)
+
+    # # Process the dataset for the 'workingcapital' feature
+    # df_processed = get_filtered_data(df, "workingcapital")
+
+    # # Display information about the processed dataset
+    # df_info(df_processed)
+    df = load_fi_cmdty_data()
     df_info(df)
-
-    # Process the dataset for the 'workingcapital' feature
-    df_processed = get_filtered_data(df, "workingcapital")
-
-    # Display information about the processed dataset
-    df_info(df_processed)
+    df = get_fi_cmdty_data(df,['OGV9 C1540', 'UD:1Y: GN 0812946353'])
+    df_info(df)
